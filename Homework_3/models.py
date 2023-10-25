@@ -14,6 +14,44 @@ from sklearn.pipeline import make_pipeline
 from keras.utils import to_categorical
 import tensorflow as tf
 
+def generate_mini_batches(X, Y, batch_size=64):
+    """
+    Generate mini-batches for training data (X, Y).
+
+    Parameters:
+    - X: Features (input data)
+    - Y: Labels (output data)
+    - batch_size: The size of each batch
+
+    Returns:
+    - mini_batches: List of mini-batches
+    """
+
+    m = X.shape[0]  # total number of samples
+    mini_batches = []
+
+    # Shuffle data
+    permutation = np.random.permutation(m)
+    X_shuffled = X[permutation]
+    Y_shuffled = Y[permutation]
+
+    # Calculate the number of complete batches
+    num_complete_batches = m // batch_size
+
+    # Generate complete batches
+    for k in range(0, num_complete_batches):
+        batch_X = X_shuffled[k * batch_size: (k + 1) * batch_size]
+        batch_Y = Y_shuffled[k * batch_size: (k + 1) * batch_size]
+        mini_batches.append((batch_X, batch_Y))
+
+    # Handle the end case (last mini-batch < batch_size)
+    if m % batch_size != 0:
+        batch_X = X_shuffled[num_complete_batches * batch_size:]
+        batch_Y = Y_shuffled[num_complete_batches * batch_size:]
+        mini_batches.append((batch_X, batch_Y))
+
+    return mini_batches
+
 
 #@title Define a base class class for Learning Algorithm
 class BaseLearningAlgorithm(ABC):
@@ -133,15 +171,18 @@ class RandomForestLearningAlgorithm(BaseLearningAlgorithm):
 
 
 #@title Basic Neural Network Algorithm
+
 class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
-    def __init__(self, sizes, epochs=10, l_rate=0.001, activation_function='relu', early_stopping=False, patience=5, min_delta=0.01):
+    def __init__(self, sizes, epochs=10, l_rate=0.001, batch_size=64, activation_function='relu', early_stopping=False, patience=5, min_delta=0.01):
         self.sizes = sizes
         self.epochs = epochs
         self.l_rate = l_rate
+        self.batch_size = batch_size
         self.early_stopping = early_stopping
         self.patience = patience
         self.min_delta = min_delta
 
+        # choose the supported activation function
         if activation_function == 'sigmoid':
           self.activation = self.sigmoid
         elif activation_function == 'relu':
@@ -182,7 +223,7 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
             'W3':np.random.randn(output_layer, hidden_2) * np.sqrt(1. / output_layer)
         }
 
-        # Xavier initialization for sigmoid
+        # Xavier initialization for sigmoid (does not work well for some reason)
         # params = {
         #     'W1':np.random.randn(hidden_1, input_layer) * np.sqrt(1. / input_layer),
         #     'W2':np.random.randn(hidden_2, hidden_1) * np.sqrt(1. / hidden_1),
@@ -190,6 +231,12 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
         # }
 
         return params
+
+    def compute_average_gradient(self, batch_gradients):
+        average_gradient = {}
+        for key in batch_gradients[0].keys():
+            average_gradient[key] = np.mean([grad[key] for grad in batch_gradients], axis=0)
+        return average_gradient
 
     def forward_pass(self, x_train: np.array) -> np.array:
         params = self.params
@@ -270,29 +317,34 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
         epochs_without_improvement = 0
 
         y_train = to_categorical(y_train)
+
+        # mini-batch
         start_time = time.time()
         for iteration in range(self.epochs):
-            for x,y in zip(x_train, y_train):
-
-                output = self.forward_pass(x)
-
-                changes_to_w = self.backward_pass(y, output)
-                self.update_network_parameters(changes_to_w)
+            mini_batches = generate_mini_batches(x_train, y_train, self.batch_size)
+            for (x_batch, y_batch) in mini_batches:
+                batch_gradients = []
+                for x, y in zip(x_batch, y_batch):
+                    output = self.forward_pass(x)
+                    changes_to_w = self.backward_pass(y, output)
+                    batch_gradients.append(changes_to_w)
+                average_gradient = self.compute_average_gradient(batch_gradients)
+                self.update_network_parameters(average_gradient)
 
             accuracy = self.compute_accuracy(x_val, y_val)
 
-            # early stopping is applied here if
+            # early stopping is applied here
             if self.early_stopping:
               if accuracy - best_val_accuracy > self.min_delta:
                 best_val_accuracy = accuracy
                 best_params = self.params
                 epochs_without_improvement = 0
-              else: 
+              else:
                 epochs_without_improvement += 1
 
-              # early stopping and loading best params
+              # loading best params
               if epochs_without_improvement > self.patience:
-                print("Early stopping is applied")
+                print("Early stopping applied")
                 self.params = best_params
                 break
 
@@ -302,30 +354,36 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
     @property
     def name(self) -> str:
       return 'Basic Neural Network'
-
+    
 
 class KerasDnnLearningAlgorithm(BaseLearningAlgorithm):
   """Keras DNN Learning Algorithm"""
-  def __init__(self, input_dim, output_dim, hidden_layers, activation, batch_size=32, epochs=10, learning_rate=0.001, patience=5):
+  def __init__(self, input_dim, output_dim, hidden_layers, activation, batch_size=32, epochs=10, learning_rate=0.001, patience=5, dropout=0.2):
     self.hidden_layers = hidden_layers
     self.activation = activation
     self.epochs = epochs
     self.batch_size = batch_size
     self.learning_rate = learning_rate
     self.patiance = patience
+    self.dropout = dropout
     self._model = self._get_model(input_dim, output_dim, hidden_layers, activation)
 
   def _get_model(self, input_dim, output_dim, hidden_layers, activation):
     model = tf.keras.Sequential()
+    
+    # input layer
     model.add(
       tf.keras.layers.Dense(
         input_dim, input_dim=input_dim, activation=activation))
-    
+
+    # hidden and droput layers
     for layer_width in hidden_layers:
       model.add(
         tf.keras.layers.Dense(
           layer_width, activation=activation))
-      
+      model.add(tf.keras.layers.Dropout(self.dropout))
+
+    # output layer
     model.add(tf.keras.layers.Dense(output_dim, activation='softmax'))
 
     model.compile(
@@ -345,13 +403,13 @@ class KerasDnnLearningAlgorithm(BaseLearningAlgorithm):
     early_stopping = tf.keras.callbacks.EarlyStopping(
       monitor='val_loss', patience=self.patiance)
     self._model.fit(
-       x_train, y_train, 
-       epochs=self.epochs, 
-       validation_data=(x_val, y_val), 
+       x_train, y_train,
+       epochs=self.epochs,
+       validation_data=(x_val, y_val),
        callbacks=[early_stopping],
        batch_size=self.batch_size
     )
-  
+
   @property
   def name(self) -> str:
      return 'Keras DNN'
