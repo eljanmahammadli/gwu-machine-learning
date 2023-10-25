@@ -134,10 +134,13 @@ class RandomForestLearningAlgorithm(BaseLearningAlgorithm):
 
 #@title Basic Neural Network Algorithm
 class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
-    def __init__(self, sizes, epochs=10, l_rate=0.001, activation_function='relu'):
+    def __init__(self, sizes, epochs=10, l_rate=0.001, activation_function='relu', early_stopping=False, patience=5, min_delta=0.01):
         self.sizes = sizes
         self.epochs = epochs
         self.l_rate = l_rate
+        self.early_stopping = early_stopping
+        self.patience = patience
+        self.min_delta = min_delta
 
         if activation_function == 'sigmoid':
           self.activation = self.sigmoid
@@ -172,11 +175,19 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
         hidden_2 = self.sizes[2]
         output_layer = self.sizes[3]
 
+        # He initialization fore ReLU
         params = {
             'W1':np.random.randn(hidden_1, input_layer) * np.sqrt(1. / hidden_1),
             'W2':np.random.randn(hidden_2, hidden_1) * np.sqrt(1. / hidden_2),
             'W3':np.random.randn(output_layer, hidden_2) * np.sqrt(1. / output_layer)
         }
+
+        # Xavier initialization for sigmoid
+        # params = {
+        #     'W1':np.random.randn(hidden_1, input_layer) * np.sqrt(1. / input_layer),
+        #     'W2':np.random.randn(hidden_2, hidden_1) * np.sqrt(1. / hidden_1),
+        #     'W3':np.random.randn(output_layer, hidden_2) * np.sqrt(1. / hidden_2)
+        # }
 
         return params
 
@@ -254,6 +265,10 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
       return np.array([str(np.argmax(self.forward_pass(x))) for x in X_test]).astype('float32')
 
     def fit(self, x_train, y_train, x_val, y_val):
+        best_val_accuracy = 0
+        best_params = None
+        epochs_without_improvement = 0
+
         y_train = to_categorical(y_train)
         start_time = time.time()
         for iteration in range(self.epochs):
@@ -265,6 +280,22 @@ class DeepNeuralNetworkLearningAlgorithm(BaseLearningAlgorithm):
                 self.update_network_parameters(changes_to_w)
 
             accuracy = self.compute_accuracy(x_val, y_val)
+
+            # early stopping is applied here if
+            if self.early_stopping:
+              if accuracy - best_val_accuracy > self.min_delta:
+                best_val_accuracy = accuracy
+                best_params = self.params
+                epochs_without_improvement = 0
+              else: 
+                epochs_without_improvement += 1
+
+              # early stopping and loading best params
+              if epochs_without_improvement > self.patience:
+                print("Early stopping is applied")
+                self.params = best_params
+                break
+
             print('Epoch: {0}, Time Spent: {1:.2f}s, Validation Accuracy: {2:.2f}%'.format(
                 iteration+1, time.time() - start_time, accuracy * 100
             ))
