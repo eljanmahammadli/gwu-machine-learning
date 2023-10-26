@@ -14,44 +14,6 @@ from sklearn.pipeline import make_pipeline
 from keras.utils import to_categorical
 import tensorflow as tf
 
-def generate_mini_batches(X, Y, batch_size=64):
-    """
-    Generate mini-batches for training data (X, Y).
-
-    Parameters:
-    - X: Features (input data)
-    - Y: Labels (output data)
-    - batch_size: The size of each batch
-
-    Returns:
-    - mini_batches: List of mini-batches
-    """
-
-    m = X.shape[0]  # total number of samples
-    mini_batches = []
-
-    # Shuffle data
-    permutation = np.random.permutation(m)
-    X_shuffled = X[permutation]
-    Y_shuffled = Y[permutation]
-
-    # Calculate the number of complete batches
-    num_complete_batches = m // batch_size
-
-    # Generate complete batches
-    for k in range(0, num_complete_batches):
-        batch_X = X_shuffled[k * batch_size: (k + 1) * batch_size]
-        batch_Y = Y_shuffled[k * batch_size: (k + 1) * batch_size]
-        mini_batches.append((batch_X, batch_Y))
-
-    # Handle the end case (last mini-batch < batch_size)
-    if m % batch_size != 0:
-        batch_X = X_shuffled[num_complete_batches * batch_size:]
-        batch_Y = Y_shuffled[num_complete_batches * batch_size:]
-        mini_batches.append((batch_X, batch_Y))
-
-    return mini_batches
-
 
 #@title Define a base class class for Learning Algorithm
 class BaseLearningAlgorithm(ABC):
@@ -73,24 +35,6 @@ class BaseLearningAlgorithm(ABC):
   @abstractmethod
   def name(self) -> str:
     """Returns the name of the algorithm."""
-
-
-#@title Define a basic train and evaluation pipeline
-def train_eval(learning_algo: BaseLearningAlgorithm, x_train, y_train,x_val, y_val, x_test, y_test):
-  """Trains and evaluates the generic model."""
-  learning_algo.fit(x_train, y_train, x_val, y_val)
-  y_pred = learning_algo.predict(x_test)
-  mat = confusion_matrix(y_test, y_pred)
-  sns.set(rc = {'figure.figsize':(8,8)})
-  sns.heatmap(mat.T, square=True, annot=True, fmt='d', cbar=False,
-              xticklabels=['%d' %i for i in range(10)],
-              yticklabels=['%d' %i for i in range(10)])
-  plt.xlabel('true label')
-  plt.ylabel('predicted label')
-  plt.title(learning_algo.name)
-
-  print(classification_report(y_test, y_pred,
-                              target_names=['%d' %i for i in range(10)]))
 
 
 #@title Define the basic Logistic Regression Model
