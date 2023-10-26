@@ -25,8 +25,8 @@ x = (x_raw/255).astype('float32').to_numpy()
 # Split the data set into train, validation, and test sets.
 x_trainval, x_test, y_trainval, y_test = train_test_split(x, y_raw, test_size=0.10, random_state=42)
 x_train, x_val, y_train, y_val = train_test_split(x_trainval, y_trainval, test_size=0.10, random_state=42)
-# print('Here are the first 9 digits of the MNIST data with label.')
-# plot_example(x, y_raw)
+print('Here are the first 9 digits of the MNIST data with label.')
+plot_example(x, y_raw)
 
 
 #@title Define a basic train and evaluation pipeline
