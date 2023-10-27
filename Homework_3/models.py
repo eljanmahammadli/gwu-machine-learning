@@ -13,6 +13,7 @@ from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.pipeline import make_pipeline
 from keras.utils import to_categorical
 import tensorflow as tf
+from main import generate_mini_batches
 
 
 #@title Define a base class class for Learning Algorithm
